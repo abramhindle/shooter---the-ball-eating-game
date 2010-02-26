@@ -3,10 +3,11 @@
 =head1 NAME Shooter.pl
 
 A quick game to demonstrate the new SDL perl api for Toronto Perl Mongers, Feb 25, 2010.
++ a hack by abram 
 
 =head2 AUTHOR 
 
-Kartik Thakore
+Kartik Thakore and some by Abram Hindle
 
 =head2 USAGE
 
@@ -134,7 +135,7 @@ while ( !$quit ) {
             }
 
         }
-        check_particle_collision(0,$player->{x},$player->{y},$player->{radius},$player);
+        check_particle_collision(0,$player->{x}+$player->{radius},$player->{y}+$player->{radius},$player->{radius},$player);
 
         #Get a new time for use now
         my $new_time = SDL::get_ticks();
@@ -223,8 +224,8 @@ sub iterate_step {
         my $dt = $dt / 1000;
         my $player_speed = player_speed($player);
         my ($mx,$my) = mouse_x_y();
-        my $dx = $mx - $player->{x};
-        my $dy = $my - $player->{y};
+        my $dx = $mx - $player->{x}+$player->{radius}; #center
+        my $dy = $my - $player->{y}+$player->{radius}; #center
         if (abs($dx) < 0.01 && abs($dy) < 0.01) {
 
         } else {
