@@ -83,6 +83,8 @@ while ( !$quit ) {
 
     #START our level
 
+    my $player = create_player();
+
     $particles = [];    #Empty our particles new level
 
     @shots = ();        #Empty the shots we may have
@@ -123,7 +125,7 @@ while ( !$quit ) {
             elsif ( $event->type == SDL_MOUSEBUTTONDOWN )
             {    #If it was a mouse button down event
                 ##Check mouse and get its status
-                check_mouse( SDL::Events::get_mouse_state() );
+                check_mouse( SDL::Events::get_mouse_state() , $player );
             }
 
         }
@@ -149,7 +151,7 @@ while ( !$quit ) {
 
             # update our particle locations base on dt time
             # (x,y) = dv*dt
-            iterate_step($dt);
+            iterate_step($dt, $player );
 
             #dequeue our time accumulator
             $accumulator -= $dt;
@@ -178,7 +180,7 @@ while ( !$quit ) {
         }
 
         #Update our view and count our frames
-        draw_to_screen( $fps, $level );
+        draw_to_screen( $fps, $level, $player );
         $frames++;
 
         # Check if we have won this level!
@@ -190,7 +192,7 @@ while ( !$quit ) {
 
 # Calculate the new velocities
 sub iterate_step {
-    my $dt = shift;
+    my ($dt, $player) = @_;
 
     foreach my $p ( @{$particles} ) {
         $p->{x} += $p->{vx} * $dt;    # Make a new x from the dt given
@@ -208,6 +210,21 @@ sub iterate_step {
         # move it into the viewable area
         $p->{x} = 0 if $p->{x} < 0;
         $p->{y} = 0 if $p->{y} < 0;
+    }
+
+    {
+        # move our dude
+        my $player_speed = player_speed($player);
+        my ($mx,$my) = mouse_x_y();
+        my $dx = $mx - $player->{x};
+        my $dy = $my - $player->{y};
+        my $dxps = $dx + $dy;
+        my $ndx =   (abs($dxps) < 0.01)?0:($dx/$dxps);#  ($dx + $dy); # 0 error
+        my $ndy =   (abs($dxps) < 0.01)?0:($dy/$dxps);#($dx + $dy); # 0 error
+        my $ddx = $dt * $player_speed * $ndx;
+        my $ddy = $dt * $player_speed * $ndy;
+        $player->{x} += $ddx;
+        $player->{x} += $ddy;
     }
 }
 
@@ -248,11 +265,17 @@ sub check_win {
     return 1;
 }
 
+sub mouse_x_y {
+    my ($click,$x,$y) = SDL::Events::get_mouse_state();
+    my @a =  ($x,$y);
+    return @a;
+}
+
 # Check if the mouse hit or misses
 sub check_mouse {
-
+    my ($click,$x,$y,$player) = @_;
     # A hash to simplify accessing the mouse
-    my $mouse = { click => $_[0]->[0], x => $_[0]->[1], y => $_[0]->[2] };
+    my $mouse = { click => $click, x => $x, y => $y };
 
     # If we have a click
     if ( $mouse->{click} ) {
@@ -271,7 +294,7 @@ sub check_mouse {
                 #We got that sucker!!
                 #Get rid of the particle for us
                 splice( @{$particles}, $_, 1 );
-
+                $player->{radius}++;
                 # We are done no more particles left lets get outta here
                 return if $#{$particles} == -1;
 
@@ -332,9 +355,43 @@ sub init_particle_surf {
     return $particle;
 }
 
+# mutates a player
+sub init_player_surf {
+    my $player = shift;
+    my $size = 2*$player->{radius};
+    #make a surface based on the size
+    my $particle =
+      SDL::Surface->new( SDL_SWSURFACE, $size, $size, 32, 0, 0, 0,
+        255 );
+
+    SDL::Video::fill_rect(
+        $particle,
+        SDL::Rect->new( 0, 0, $size, $size),
+        SDL::Video::map_RGB( $app->format, 60, 60, 60 )
+    );
+
+    #draw a circle on it with a random color
+    SDL::GFX::Primitives::filled_circle_color( $particle, $size / 2, $size / 2,
+        $size / 2 - 2,
+        $player->{color} );
+
+    SDL::GFX::Primitives::aacircle_color( $particle, $size / 2, $size / 2,
+        $size / 2 - 2, 0x000000FF );
+    SDL::GFX::Primitives::aacircle_color( $particle, $size / 2, $size / 2,
+        $size / 2 - 1, 0x000000FF );
+
+    SDL::Video::display_format($particle);
+    my $pixel = SDL::Color->new( 60, 60, 60 );
+    SDL::Video::set_color_key( $particle, SDL_SRCCOLORKEY, $pixel );
+    $player->{surf} = $particle;
+    return $player;
+}
+
+
+
 # The final update that is drawn to the screen
 sub draw_to_screen {
-    my ( $fps, $level ) = @_;
+    my ( $fps, $level, $player ) = @_;
 
     #Blit the back ground surface to the window
     SDL::Video::blit_surface(
@@ -360,6 +417,8 @@ sub draw_to_screen {
     #Draw each particle
     draw_particles();
 
+    draw_player($player);
+
     #Update the entire window
     #This is one frame!
     SDL::Video::flip($app);
@@ -384,6 +443,25 @@ sub draw_particles {
 
     }
 }
+
+
+sub draw_player {
+    my ($p) = @_;
+    my $m = int(2*$p->{radius});
+    my $new_part_rect = SDL::Rect->new( 0, 0, $m, $m );
+    #Blit the particles surface to the app in the right location
+    SDL::Video::blit_surface(
+                             $p->{surf},
+                             $new_part_rect,
+                             $app,
+                             SDL::Rect->new(
+                                            int($p->{x} -  $p->{radius} ), 
+                                            int($p->{y} -  $p->{radius} ),
+                                            $app->w, $app->h
+                                           )
+                            );
+}
+
 
 # Make a random particle
 sub make_rand_particle {
@@ -412,3 +490,42 @@ sub make_rand_particle {
     push @{$particles}, $particle;
 
 }
+
+sub create_player {
+    my %hash = @_;
+    my $player = {
+        player => 1,
+        x => $hash{x} || 0,
+        y => $hash{y} || 0,
+        radius => $hash{radius} || 10,
+        color => $hash{color} || rgb_color(255,255,255),
+    };
+    #make the surface
+    return init_player_surf($player);
+}
+
+sub player_speed {
+    my ($player) = @_;
+    return 100 - max(0,10*($player->{radius} - 10));
+}
+
+
+
+sub rgb_color {
+    my ($r,$g,$b) = @_;
+    return ( 0x000000FF | ( $r << 24 ) | ( $b << 16 ) | ($g) << 8 );
+}
+
+sub max {
+    my $max = shift;
+    while(@_) {
+        my $t = shift;
+        $max = ($t > $max)?$t:$max;
+    }
+    return $max;
+}
+
+# Todo
+#   draw a player, he moves towards the mouse at a certain speed
+#     speed decreases as he eats more
+#     radius increases as he eats more
