@@ -78,6 +78,11 @@ my $level = 1;
 
 my $quit = 0;
 
+my $mouse = { click =>0, x=>0, y=>0};
+sub update_mouse {
+
+}
+
 #continue until we see the $quit flag turn on that way we grace fully exit
 while ( !$quit ) {
 
@@ -129,6 +134,7 @@ while ( !$quit ) {
             }
 
         }
+        check_particle_collision(0,$player->{x},$player->{y},$player->{radius},$player);
 
         #Get a new time for use now
         my $new_time = SDL::get_ticks();
@@ -214,17 +220,27 @@ sub iterate_step {
 
     {
         # move our dude
+        my $dt = $dt / 1000;
         my $player_speed = player_speed($player);
         my ($mx,$my) = mouse_x_y();
         my $dx = $mx - $player->{x};
         my $dy = $my - $player->{y};
-        my $dxps = $dx + $dy;
-        my $ndx =   (abs($dxps) < 0.01)?0:($dx/$dxps);#  ($dx + $dy); # 0 error
-        my $ndy =   (abs($dxps) < 0.01)?0:($dy/$dxps);#($dx + $dy); # 0 error
-        my $ddx = $dt * $player_speed * $ndx;
-        my $ddy = $dt * $player_speed * $ndy;
-        $player->{x} += $ddx;
-        $player->{x} += $ddy;
+        if (abs($dx) < 0.01 && abs($dy) < 0.01) {
+
+        } else {
+            my $angle = atan2($dx,$dy);
+            # o/h = sin(angle)
+            my $rdx = $dt * $player_speed * sin($angle);
+            my $rdy = $dt * $player_speed * cos($angle);
+            $player->{x} += $rdx;
+            $player->{y} += $rdy;
+
+        }
+        #my $dxps = $dx + $dy;
+        #my $ndx =   (abs($dxps) < 0.01)?0:($dx/$dxps);#  ($dx + $dy); # 0 error
+        #my $ndy =   (abs($dxps) < 0.01)?0:($dy/$dxps);#($dx + $dy); # 0 error
+        #my $ddx = $dt * $player_speed * $ndx;
+        #my $ddy = $dt * $player_speed * $ndy;
     }
 }
 
@@ -266,51 +282,71 @@ sub check_win {
 }
 
 sub mouse_x_y {
-    my ($click,$x,$y) = SDL::Events::get_mouse_state();
+    my $mouse = SDL::Events::get_mouse_state();
+    my $click = $mouse->[0];
+    my $x = $mouse->[1];
+    my $y = $mouse->[2];
     my @a =  ($x,$y);
     return @a;
 }
 
 # Check if the mouse hit or misses
 sub check_mouse {
-    my ($click,$x,$y,$player) = @_;
+    my ($mouse,$player) = @_;
+    my $click = $mouse->[0];
+    my $x = $mouse->[1];
+    my $y = $mouse->[2];
+
     # A hash to simplify accessing the mouse
     my $mouse = { click => $click, x => $x, y => $y };
 
     # If we have a click
-    if ( $mouse->{click} ) {
-        my $count_part = $#{$particles}; # Count the number of particles we have
-        foreach ( 0 .. $count_part ) {
-            my $p = @{$particles}[$_];
-            next if !$p;    # If the particle has been splice out don't continue
+    if ( $click ) {
+        check_particle_collision(1,$x,$y,10,$player);
 
-           # Check if our mouse rectangle collides with the particle's rectangle
-            if (   ( $mouse->{x} - 10 < $p->{x} + $p->{m} )
-                && ( $mouse->{x} + 10 > $p->{x} )
-                && ( $mouse->{y} - 10 < $p->{y} + $p->{m} )
-                && ( $mouse->{y} + 10 > $p->{y} ) )
-            {
-
-                #We got that sucker!!
-                #Get rid of the particle for us
-                splice( @{$particles}, $_, 1 );
-                $player->{radius}++;
-                # We are done no more particles left lets get outta here
-                return if $#{$particles} == -1;
-
-            }
-            else {
-
-           #Crap we missed the guy
-           #Make a rectangle there to remind us of our horrible horrible failure
-                push @shots, SDL::Rect->new( $mouse->{x}, $mouse->{y}, 2, 2 );
-
-            }
-        }
 
     }
 
 }
+
+
+sub check_particle_collision {
+    my ($shot,$x,$y,$err,$player) = @_;
+    my $count_part = $#{$particles}; # Count the number of particles we have
+    foreach ( 0 .. $count_part ) {
+        my $p = @{$particles}[$_];
+        next if !$p;    # If the particle has been splice out don't continue
+        
+        # Check if our mouse rectangle collides with the particle's rectangle
+        if (point_near_particle($p,$x,$y,10)) {
+            #We got that sucker!!
+            #Get rid of the particle for us
+            $player->{radius} += 1 ;
+            init_player_surf($player);
+            splice( @{$particles}, $_, 1 );
+                
+            # We are done no more particles left lets get outta here
+            return if $#{$particles} == -1;
+            
+        } elsif($shot) {
+                
+            #Crap we missed the guy
+            #Make a rectangle there to remind us of our horrible horrible failure
+            push @shots, SDL::Rect->new( $x, $y, 2, 2 );
+            
+        }
+    }
+}
+
+sub point_near_particle {
+    my ($p,$x,$y,$err) = @_;
+    return ( $x - $err < $p->{x} + $p->{m} )
+        && ( $x + $err > $p->{x} )
+        && ( $y - $err < $p->{y} + $p->{m} )
+        && ( $y + $err > $p->{y} ) ;
+}
+
+
 
 #Gets a random color for our particle
 sub rand_color {
@@ -506,7 +542,7 @@ sub create_player {
 
 sub player_speed {
     my ($player) = @_;
-    return 100 - max(0,10*($player->{radius} - 10));
+    return 300 - max(0,30*($player->{radius} - 10));
 }
 
 
